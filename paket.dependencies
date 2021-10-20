@@ -1,0 +1,12 @@
+source https://api.nuget.org/v3/index.json
+
+storage: packages
+framework: net5.0, netstandard2.0, netstandard2.1
+nuget Fable.DateFunctions 3.7.0
+nuget Fable.MaterialUI.Icons
+nuget Fable.Mocha 2.9.1
+nuget Feliz 1.53.0
+nuget Feliz.MaterialUI
+nuget Feliz.MaterialUI.MaterialTable
+nuget Feliz.Router 3.8.0
+nuget FSharp.Core content: none
