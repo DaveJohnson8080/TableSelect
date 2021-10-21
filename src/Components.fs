@@ -97,6 +97,17 @@ type Components =
                 popover = styles.create [
                     style.cursor.pointer
                 ]
+
+                adorn = styles.create [
+                    style.zIndex 1
+                    style.color theme.palette.text.primary
+                    style.cursor.pointer
+                ]
+
+                adornLink = styles.create [
+                    style.zIndex 1
+                    style.cursor.pointer
+                ]
             |}
         )
 
@@ -107,7 +118,6 @@ type Components =
         let dialogOpen, setDialogOpen = React.useState(true)
         let popoverRef = React.useRef(null)
         let popoverOpen, setPopoverOpen = React.useState(false)
-        let previousValue, setPreviousValue = React.useState(currentSelections)
         let changeStack, setChangeStack =
             React.useState(
                 {|
@@ -342,102 +352,74 @@ type Components =
                 ]
             ]
 
+        let textFieldId = System.Guid.NewGuid().ToString()
+
         let textField =
             Mui.textField [
+                prop.id textFieldId
                 prop.ariaOwns [| "list-select-popover" |]
                 prop.ref (fun r -> popoverRef.current <- r)
                 prop.ariaHasPopup true
-                // prop.onMouseEnter (fun e ->
-                //     setPopoverOpen true
-                // )
-                // textField.select true
+                prop.className c.textValue
+                textField.disabled true
                 textField.label [
                     Mui.link [
                         prop.text props.Title
                         prop.onClick (fun _ -> setDialogOpen true)
                     ]
                 ]
-                // prop.onMouseUp (fun e -> 
-                //     setDialogOpen true
-                //     // e.stopPropagation()
-                // )
-                // match props.MaxSelections with
-                // | Some max ->
-                //     textField.value [
-                //         Mui.typography [
-                //             prop.className c.textValue
-                //             prop.text (sprintf "%i/%i" currentSelections.Length max)
-                //         ]
-                //     ]
-                // | None -> ()
-                
-
                 textField.variant.outlined
                 textField.InputLabelProps [
                     prop.className c.label
                 ]
                 textField.fullWidth true
                 prop.onClick (fun _ -> setDialogOpen true)
-                textField.value (
-                    match topItem with
-                    | Some item ->
-                        let shortenedDesc =
-                            if item.Description.Length > 30 then
-                                item.Description.Remove(30)
-                            else item.Description
-                        if totalSelected - 1 > 0 then
-                            sprintf "%s. %s ... (+ %i more)" item.Id shortenedDesc (totalSelected - 1)
-                        else
-                            sprintf "%s. %s ..." item.Id shortenedDesc
-                    | None -> "..."
-                )
-                // prop.children
-                //     [
-                //         Mui.menuItem [
-                //             prop.key "0"
-                //             prop.value "0"
-                //             menuItem.children [
-                //                 match topItem with
-                //                 | Some item ->
-                //                     let shortenedDesc =
-                //                         if item.Description.Length > 30 then
-                //                             item.Description.Remove(30)
-                //                         else item.Description
-                //                     if totalSelected - 1 > 0 then
-                //                         sprintf "%s. %s ... (+ %i more)" item.Id shortenedDesc (totalSelected - 1)
-                //                     else
-                //                         sprintf "%s. %s ..." item.Id shortenedDesc
-                //                 | None -> "..."
-                //             ]
-                //         ]
-                //     ]
-                // textField.value "0"
+                textField.InputProps [
+                    input.startAdornment (
+                        Mui.inputAdornment [
+                            inputAdornment.position.start
+                            inputAdornment.children [
+                                Mui.typography [
+                                    prop.className c.adorn
+                                    typography.children (
+                                        match topItem with
+                                        | Some item ->
+                                            let shortenedDesc =
+                                                if item.Description.Length > 50 then
+                                                    item.Description.Remove(50)
+                                                else item.Description
+                                            if totalSelected - 1 > 0 then
+                                                sprintf "%s. %s ... (+ %i more)" item.Id shortenedDesc (totalSelected - 1)
+                                            else
+                                                sprintf "%s. %s ..." item.Id shortenedDesc
+                                        | None -> "..."
+                                    )
+                                ]
+                            ]
+                        ]
+                    )
+                    input.endAdornment (
+                        Mui.inputAdornment [
+                            inputAdornment.position.end'
+                            inputAdornment.children [
+                                Mui.link [
+                                    prop.className c.adornLink
+                                    link.children (
+                                        match props.MaxSelections with
+                                        | Some max ->
+                                            sprintf "%i/%i" originalSelections.Length max
+                                        | None -> "..."
+                                    )
+                                ]
+                            ]
+                        ]
+                    )
+                ]
             ]
 
         Html.div [
             dialog
-            Mui.grid [
-                grid.container true
-                grid.children [
-                    Mui.grid [
-                        grid.item true
-                        grid.xs._3
-                    ]
-                    Mui.grid [
-                        grid.item true
-                        grid.xs._3
-                        grid.children [
-                            popover
-                            textField
-                        ]
-                    ]
-                    Mui.grid [
-                        grid.item true
-                        grid.xs._3
-                    ]
-                ]
-            ]
-            
+            textField
         ]
 
     [<ReactComponent>]
