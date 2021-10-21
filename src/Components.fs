@@ -62,9 +62,9 @@ type Components =
                                             Description : string
                                         |} list
                                     SelectedIds : string list
-                                    OnUpdated : string list -> unit
                                     MaxSelections : int option
-                                |}) =
+                                |},
+                                (onUpdated : string list -> unit)) =
 
         let useStyles = Styles.makeStyles(fun styles theme ->
             {|
@@ -80,7 +80,7 @@ type Components =
                     style.alignContent.flexStart
                 ]
 
-                cancelButton = styles.create [
+                revertButton = styles.create [
                     style.float'.right
                 ]
 
@@ -93,6 +93,10 @@ type Components =
                 textValue = styles.create [
                     style.cursor.pointer
                 ]
+
+                popover = styles.create [
+                    style.cursor.pointer
+                ]
             |}
         )
 
@@ -100,9 +104,53 @@ type Components =
 
         let originalSelections = props.SelectedIds
         let currentSelections, updateSelections = React.useState(originalSelections)
-        let dialogOpen, setDialogOpen = React.useState(false)
+        let dialogOpen, setDialogOpen = React.useState(true)
         let popoverRef = React.useRef(null)
         let popoverOpen, setPopoverOpen = React.useState(false)
+        let previousValue, setPreviousValue = React.useState(currentSelections)
+        let changeStack, setChangeStack =
+            React.useState(
+                {|
+                    Current = currentSelections
+                    Previous = None
+                |}
+        )
+        let getOptionFromId id =
+            props.Options
+            |> List.tryFind (fun x ->
+                x.Id = id
+            )
+
+        let getTopItem selections =
+            match selections with
+            | [h] ->
+                getOptionFromId h
+            | _::t ->
+                getOptionFromId t.Head
+            | _ -> None
+
+        let topItem, setTopItem = React.useState(originalSelections |> getTopItem)
+
+        let pushChange (selections : string list) =
+            updateSelections selections
+            {|
+                changeStack with
+                    Current = selections
+                    Previous = Some changeStack.Current
+            |}
+            |> setChangeStack
+
+        let popChange () =
+            match changeStack.Previous with
+            | None -> ()
+            | Some prev ->
+                updateSelections prev
+                {|
+                    changeStack with
+                        Current = prev
+                        Previous = None
+                |}
+                |> setChangeStack
 
         let onCheckChanged id isChecked =
             let found =
@@ -111,25 +159,23 @@ type Components =
             match found, isChecked, props.MaxSelections with
             | Some f, true, _ -> ()
             | Some f, false, _ ->
-                let udpatedSelections =
+                let updatedSelections =
                     currentSelections
                     |> List.where (fun x -> x <> id)
-                updateSelections udpatedSelections
+                    |> List.sort
+                pushChange updatedSelections
             | None, true, Some max ->
                 match max with
                 | 1 ->
                     let updatedSelections = [ id ]
-                    updateSelections updatedSelections
+                    pushChange updatedSelections
                 | _ ->
                     if currentSelections.Length < max then
-                        let udpatedSelections = id :: currentSelections
-                        updateSelections udpatedSelections
+                        let udpatedSelections = id :: currentSelections |> List.sort
+                        pushChange udpatedSelections
                     else
                         ()
             | _ -> ()
-
-        let onRevert () =
-            updateSelections(originalSelections)
 
         let toListData selections =
             props.Options
@@ -143,6 +189,9 @@ type Components =
                 |}
             )
 
+        let totalSelected =
+            originalSelections.Length
+
         let makeListItem id selected (data : string) =
             Mui.listItem [
                 Mui.checkbox [
@@ -151,7 +200,7 @@ type Components =
                 ]
 
                 Mui.typography [
-                    prop.text data
+                    prop.text (sprintf "%s. %s" id data)
                 ]
             ]
 
@@ -195,11 +244,11 @@ type Components =
                         grid.children [
                             Mui.grid [
                                 grid.item true
-                                grid.xs._4
+                                grid.xs._6
                                 grid.children [
                                     Mui.iconButton [
                                         prop.onClick (fun _ -> 
-                                            props.OnUpdated currentSelections
+                                            onUpdated currentSelections
                                             setDialogOpen false
                                         )
                                         iconButton.children [
@@ -213,33 +262,15 @@ type Components =
                             ]
                             Mui.grid [
                                 grid.item true
-                                grid.xs._4
+                                grid.xs._6
                                 grid.children [
                                     Mui.iconButton [
-                                        prop.onClick (fun _ -> onRevert())
+                                        prop.className c.revertButton
+                                        prop.onClick (fun _ -> popChange())
                                         iconButton.children [
                                             replayIcon [
                                                 icon.fontSize.large
                                                 icon.color.primary
-                                            ]
-                                        ]
-                                    ]
-                                ]
-                            ]
-                            Mui.grid [
-                                grid.item true
-                                grid.xs._4
-                                grid.children [
-                                    Mui.iconButton [
-                                        prop.className c.cancelButton
-                                        iconButton.children [
-                                            exitToAppOutlinedIcon [
-                                                prop.onClick (fun _ ->
-                                                    updateSelections originalSelections
-                                                    setDialogOpen false
-                                                )
-                                                icon.fontSize.large
-                                                icon.color.error
                                             ]
                                         ]
                                     ]
@@ -253,10 +284,11 @@ type Components =
         let popover =
             Mui.popover [
                 prop.id "list-select-popover"
+                prop.className c.popover
                 popover.anchorEl (Some popoverRef.current)
                 popover.open' popoverOpen
-                popover.anchorOrigin.bottomLeft
-                popover.transformOrigin.bottomLeft
+                popover.anchorOrigin.topLeft
+                popover.transformOrigin.topLeft
                 popover.disableRestoreFocus true
                 prop.children [
                     Html.div [
@@ -279,6 +311,7 @@ type Components =
                                                     prop.className c.textValue
                                                     typography.variant.subtitle1
                                                     typography.children ("Click to Edit")
+                                                    typography.color.primary
                                                 ]
                                             ]
                                         ]
@@ -295,7 +328,7 @@ type Components =
                                                         prop.className c.textValue
                                                         typography.variant.body1
                                                         typography.children
-                                                            (sprintf "%s - %s" x.Id x.Description)
+                                                            (sprintf "%s. %s" x.Id x.Description)
                                                     ]
                                                 ]
                                             ]
@@ -311,45 +344,74 @@ type Components =
 
         let textField =
             Mui.textField [
-                prop.ariaOwns [| "mouse-over-popover" |]
+                prop.ariaOwns [| "list-select-popover" |]
                 prop.ref (fun r -> popoverRef.current <- r)
                 prop.ariaHasPopup true
-                prop.onMouseEnter (fun e ->
-                    setPopoverOpen true
-                )
-                textField.select true
+                // prop.onMouseEnter (fun e ->
+                //     setPopoverOpen true
+                // )
+                // textField.select true
                 textField.label [
                     Mui.link [
                         prop.text props.Title
                         prop.onClick (fun _ -> setDialogOpen true)
                     ]
                 ]
-                match props.MaxSelections with
-                | Some max ->
-                    textField.value [
-                        Mui.typography [
-                            prop.className c.textValue
-                            prop.text (sprintf "%i/%i" currentSelections.Length max)
-                        ]
-                    ]
-                | None -> ()
+                // prop.onMouseUp (fun e -> 
+                //     setDialogOpen true
+                //     // e.stopPropagation()
+                // )
+                // match props.MaxSelections with
+                // | Some max ->
+                //     textField.value [
+                //         Mui.typography [
+                //             prop.className c.textValue
+                //             prop.text (sprintf "%i/%i" currentSelections.Length max)
+                //         ]
+                //     ]
+                // | None -> ()
+                
+
                 textField.variant.outlined
                 textField.InputLabelProps [
                     prop.className c.label
                 ]
                 textField.fullWidth true
                 prop.onClick (fun _ -> setDialogOpen true)
-                prop.children
-                    [
-                        Mui.menuItem [
-                            prop.key "0"
-                            prop.value "0"
-                            menuItem.children [
-                                "..."
-                            ]
-                        ]
-                    ]
-                textField.value "0"
+                textField.value (
+                    match topItem with
+                    | Some item ->
+                        let shortenedDesc =
+                            if item.Description.Length > 30 then
+                                item.Description.Remove(30)
+                            else item.Description
+                        if totalSelected - 1 > 0 then
+                            sprintf "%s. %s ... (+ %i more)" item.Id shortenedDesc (totalSelected - 1)
+                        else
+                            sprintf "%s. %s ..." item.Id shortenedDesc
+                    | None -> "..."
+                )
+                // prop.children
+                //     [
+                //         Mui.menuItem [
+                //             prop.key "0"
+                //             prop.value "0"
+                //             menuItem.children [
+                //                 match topItem with
+                //                 | Some item ->
+                //                     let shortenedDesc =
+                //                         if item.Description.Length > 30 then
+                //                             item.Description.Remove(30)
+                //                         else item.Description
+                //                     if totalSelected - 1 > 0 then
+                //                         sprintf "%s. %s ... (+ %i more)" item.Id shortenedDesc (totalSelected - 1)
+                //                     else
+                //                         sprintf "%s. %s ..." item.Id shortenedDesc
+                //                 | None -> "..."
+                //             ]
+                //         ]
+                //     ]
+                // textField.value "0"
             ]
 
         Html.div [
@@ -380,6 +442,78 @@ type Components =
 
     [<ReactComponent>]
     static member Root () =
+        let initialState =
+            {|
+                Title = "Protective Devices"
+                Options = [
+                    {|
+                        Id = "1"
+                        Description = "None"
+                    |}
+                    {|
+                        Id = "2"
+                        Description = "Lap Belt"
+                    |}
+                    {|
+                        Id = "3"
+                        Description = "Personal Floatation Device"
+                    |}
+                    {|
+                        Id = "4"
+                        Description = "Protective Non-Clothing Gear (e.g., shin guard)"
+                    |}
+                    {|
+                        Id = "5"
+                        Description = "Eye Protection"
+                    |}
+                    {|
+                        Id = "6"
+                        Description = "Child Restraint(booster seat or child car seat)"
+                    |}
+                    {|
+                        Id = "7"
+                        Description = "Helmet (e.g., bicycle, skiing, motorcycle)"
+                    |}
+                    {|
+                        Id = "8"
+                        Description = "Airbag Present"
+                    |}
+                    {|
+                        Id = "9"
+                        Description = "Protective Clothing (e.g., padded leather pants)"
+                    |}
+                    {|
+                        Id = "10"
+                        Description = "Shoulder Belt"
+                    |}
+                    {|
+                        Id = "11"
+                        Description = "Other"
+                    |}
+                    {|
+                        Id = "50"
+                        Description = "Hard Hat"
+                    |}
+                    {|
+                        Id = "51"
+                        Description = "Safety Belt"
+                    |}
+                    {|
+                        Id = "NK/NR"
+                        Description = "Not Known/Not Recorded"
+                    |}
+                ]
+                SelectedIds = [ "2"; "10" ]
+                MaxSelections = Some 10
+            |}
+        let state, setState = React.useState(initialState)
+        let handleUpdate (ids : string list) =
+            {|
+                state with
+                    SelectedIds = ids
+            |}
+            |> setState
+
         Html.div [
             Html.div [
                 Components.ListSelect(
@@ -408,78 +542,16 @@ type Components =
                             |}
                         ]
                         SelectedIds = [ "2" ]
-                        OnUpdated = ignore
                         MaxSelections = Some 1
-                    |}
+                    |},
+                    ignore
                 )
             ]
             Html.p []
             Html.div [
                 Components.ListSelect(
-                    {|
-                        Title = "Protective Devices"
-                        Options = [
-                            {|
-                                Id = "1"
-                                Description = "None"
-                            |}
-                            {|
-                                Id = "2"
-                                Description = "Lap Belt"
-                            |}
-                            {|
-                                Id = "3"
-                                Description = "Personal Floatation Device"
-                            |}
-                            {|
-                                Id = "4"
-                                Description = "Protective Non-Clothing Gear (e.g., shin guard)"
-                            |}
-                            {|
-                                Id = "5"
-                                Description = "Eye Protection"
-                            |}
-                            {|
-                                Id = "6"
-                                Description = "Child Restraint(booster seat or child car seat)"
-                            |}
-                            {|
-                                Id = "7"
-                                Description = "Helmet (e.g., bicycle, skiing, motorcycle)"
-                            |}
-                            {|
-                                Id = "8"
-                                Description = "Airbag Present"
-                            |}
-                            {|
-                                Id = "9"
-                                Description = "Protective Clothing (e.g., padded leather pants)"
-                            |}
-                            {|
-                                Id = "10"
-                                Description = "Shoulder Belt"
-                            |}
-                            {|
-                                Id = "11"
-                                Description = "Other"
-                            |}
-                            {|
-                                Id = "50"
-                                Description = "Hard Hat"
-                            |}
-                            {|
-                                Id = "51"
-                                Description = "Safety Belt"
-                            |}
-                            {|
-                                Id = "NK/NR"
-                                Description = "Not Known/Not Recorded"
-                            |}
-                        ]
-                        SelectedIds = [ "2" ]
-                        OnUpdated = ignore
-                        MaxSelections = Some 10
-                    |}
+                    state,
+                    handleUpdate
                 )
             ]
         ]
